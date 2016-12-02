@@ -66,15 +66,20 @@ typedef enum {
   BLDC_PACKET_STATUS3
 } BLDC_PACKET_ID;
 
+// Simple commands to set motor operation
 void bldc_set_duty(struct can_frame *frame, int id, float duty);
 void bldc_set_current(struct can_frame *frame, int id, float current);
 void bldc_set_current_brake(struct can_frame *frame, int id, float current);
 void bldc_set_erpm(struct can_frame *frame, int id, int32_t erpm);
 
-
+// Returned status infomation
 void bldc_get_status(struct can_frame *frame, bldc_status *status);
 void bldc_get_status2(struct can_frame *frame, bldc_status2 *status);
 void bldc_get_status3(struct can_frame *frame, bldc_status3 *status);
 
+// Functions to write long commands to the VESC's buffer.
+void bldc_process_cmd(struct can_frame **frames, int id, uint8_t* tx_buffer, uint8_t len);
 
+// CRC function..
+uint16_t crc16(uint8_t* buf, unsigned int len);
 #endif //libbldc_H

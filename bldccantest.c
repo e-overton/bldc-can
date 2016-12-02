@@ -11,28 +11,44 @@
 
 
 int main(int varc, char* varv[])
-{
+{  
+  int can_socket;
+  const char *ifname = varv[1];
+  struct ifreq can_ifr;
+  struct sockaddr_can can_addr;
+  struct can_frame test_frame;
+  int nbytes;
+
   printf("bldctest \n");
   printf("run with arguments:\n");
-  printf("  1. caninterface\n");
+  printf("  1. caninterface\n\n");
+
+  printf("Starting application\n");
 
   // Setup CAN interface:
-  int can_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-
-  struct ifreq can_ifr;
-  strcpy(can_ifr.ifr_name, "can0");
+  can_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+  strcpy(can_ifr.ifr_name, ifname);
   //can_ifr.ifr_name = "can0";
   if (ioctl(can_socket, SIOCGIFINDEX, &can_ifr) < 0)
   {
     printf("ERROR unable to connect to interface: %s\n", can_ifr.ifr_name);
+    return -1;
   }
+  
+  printf("Connected to socket: %s\n", can_ifr.ifr_name);
+  can_addr.can_family = AF_CAN;
+  can_addr.can_ifindex = can_ifr.ifr_ifindex;
 
-    struct sockaddr_can can_addr;
-    can_addr.can_family = AF_CAN;
+  if(bind(can_socket, (struct sockaddr *)&can_addr, sizeof(can_addr)) < 0) {
+		perror("Error in socket bind");
+		return -2;
+	}
 
-
-  struct can_frame test_frame;
   bldc_set_erpm(&test_frame, 3, 9000);
 
+
+  nbytes = write(can_socket, &test_frame, sizeof(struct can_frame));
+
+  printf("Wrote %d bytes\n", nbytes);
   return 0;
 }
