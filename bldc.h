@@ -66,6 +66,46 @@ typedef enum {
   BLDC_PACKET_STATUS3
 } BLDC_PACKET_ID;
 
+//BLDC commands
+typedef enum {
+	COMM_FW_VERSION = 0,
+	COMM_JUMP_TO_BOOTLOADER,
+	COMM_ERASE_NEW_APP,
+	COMM_WRITE_NEW_APP_DATA,
+	COMM_GET_VALUES,
+	COMM_SET_DUTY,
+	COMM_SET_CURRENT,
+	COMM_SET_CURRENT_BRAKE,
+	COMM_SET_RPM,
+	COMM_SET_POS,
+	COMM_SET_DETECT,
+	COMM_SET_SERVO_POS,
+	COMM_SET_MCCONF,
+	COMM_GET_MCCONF,
+	COMM_GET_MCCONF_DEFAULT,
+	COMM_SET_APPCONF,
+	COMM_GET_APPCONF,
+	COMM_GET_APPCONF_DEFAULT,
+	COMM_SAMPLE_PRINT,
+	COMM_TERMINAL_CMD,
+	COMM_PRINT,
+	COMM_ROTOR_POSITION,
+	COMM_EXPERIMENT_SAMPLE,
+	COMM_DETECT_MOTOR_PARAM,
+	COMM_DETECT_MOTOR_R_L,
+	COMM_DETECT_MOTOR_FLUX_LINKAGE,
+	COMM_DETECT_ENCODER,
+	COMM_DETECT_HALL_FOC,
+	COMM_REBOOT,
+	COMM_ALIVE,
+	COMM_GET_DECODED_PPM,
+	COMM_GET_DECODED_ADC,
+	COMM_GET_DECODED_CHUK,
+	COMM_FORWARD_CAN,
+	COMM_SET_CHUCK_DATA,
+	COMM_CUSTOM_APP_DATA
+} COMM_PACKET_ID;
+
 // Simple commands to set motor operation
 void bldc_set_duty(struct can_frame *frame, int id, float duty);
 void bldc_set_current(struct can_frame *frame, int id, float current);
@@ -78,7 +118,8 @@ void bldc_get_status2(struct can_frame *frame, bldc_status2 *status);
 void bldc_get_status3(struct can_frame *frame, bldc_status3 *status);
 
 // Functions to write long commands to the VESC's buffer.
-void bldc_process_cmd(struct can_frame **frames, int id, uint8_t* tx_buffer, uint8_t len);
+uint8_t bldc_reboot(struct can_frame frames[], int id);
+void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uint8_t len);
 
 // CRC function..
 uint16_t crc16(uint8_t* buf, unsigned int len);

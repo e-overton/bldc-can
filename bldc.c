@@ -124,7 +124,7 @@ void bldc_get_status(struct can_frame *frame, bldc_status *status)
 void bldc_get_status2(struct can_frame *frame, bldc_status2 *status)
 {
   int ind = 0;
-  status->id = frame->can_id;
+  status->id = frame->can_id & 0xFF;
   status->current_input = (float)bldc_buffer_get_int16(frame->data, &ind) /100.0;
   status->voltage_input = (float)bldc_buffer_get_int16(frame->data, &ind) /1000.0;
   status->uptime = bldc_buffer_get_uint32(frame->data, &ind);
@@ -133,7 +133,7 @@ void bldc_get_status2(struct can_frame *frame, bldc_status2 *status)
 void bldc_get_status3(struct can_frame *frame, bldc_status3 *status)
 {
   int ind = 0;
-  status->id = frame->can_id;
+  status->id = frame->can_id & 0xFF;
   status->temperature_mos1 = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;;
   status->temperature_motor = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;
   status->fault_code = frame->data[ind++];
@@ -142,24 +142,73 @@ void bldc_get_status3(struct can_frame *frame, bldc_status3 *status)
 
 //-------------------------------------------------------------------------------------
 
-void bldc_process_cmd(struct can_frame **frames, int id, uint8_t* tx_buffer, uint8_t tx_len)
+uint8_t bldc_reboot(struct can_frame frames[], int id)
+{
+   // The reboot command only has one identifier, the command itsef.
+   // Issuing this command will cause the VESC to lockup and the
+   // watchdog to reboot it (hopefully).
+   uint8_t tx_buffer[1];
+   tx_buffer[0] = COMM_REBOOT;
+
+   bldc_process_cmd(frames, id, tx_buffer, 1);
+
+   int i,j;
+   for (i=0; i<2; i++)
+   {
+      printf("%20x  ", frames[i].can_id);
+      for (j=0; j<frames[i].can_dlc; j++) printf("%02x", frames[i].data[j]);
+      printf("\n");
+   }
+
+   return 2;
+};
+
+
+
+void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uint8_t tx_len)
 {
   uint8_t i = 0;
+  uint8_t j = 0;
+  uint8_t frame_cnt = 0;
 
   // Generate a CRC for the encoded data:
   uint16_t crc = crc16(tx_buffer, tx_len);
 
   // First generate the can packets:
   BLDC_PACKET_ID ctl = BLDC_PACKET_FILL_RX_BUFFER;
-  for (i = 0; i<tx_len; i++)
+
+  for (i=0; i<tx_len; i++)
   {
-    frames[i/7]->can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
-    frames[i/7]->data[0] = i/7;
-    frames[i/7]->data[i%7 + 1] = tx_buffer[i];
+    if (j==8)
+    {
+       frame_cnt+=1;
+       j=0;
+    }
+
+    if (j==0)
+    {
+       frames[frame_cnt].can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
+       frames[frame_cnt].can_dlc = 8;
+       frames[frame_cnt].data[0] = frame_cnt;
+       j++;
+    }
+
+    frames[frame_cnt].data[j] = tx_buffer[i];
+    j++;
   }
 
-  // Second execute the command:
-  
+  frame_cnt++;
+
+  // Second, generate the process command:
+  BLDC_PACKET_ID process = BLDC_PACKET_PROCESS_RX_BUFFER;
+  frames[frame_cnt].can_id = (id & 0xFF) + ((uint8_t)process << 8) + 0x80000000;  
+  frames[frame_cnt].data[0] = 0x0; // rx_buffer_last_id - the address to send the command to
+  frames[frame_cnt].data[1] = 0x0; // set to true if the command is to be relayed.
+  frames[frame_cnt].data[2] = 0xFF & (tx_len>>8); // upper byte of txlen
+  frames[frame_cnt].data[3] = 0xFF & tx_len;   // lower byte of txlen
+  frames[frame_cnt].data[4] = 0xFF & (crc>>8); // crc high
+  frames[frame_cnt].data[5] = 0xFF & crc;   // crc low
+  frames[frame_cnt].can_dlc = 8;
 
 }
 

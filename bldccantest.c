@@ -44,10 +44,25 @@ int main(int varc, char* varv[])
 		return -2;
 	}
 
-  bldc_set_erpm(&test_frame, 3, 9000);
+  bldc_set_erpm(&test_frame, 45, 9000);
 
+  struct can_frame test_frames[10];
+  int nframes = bldc_reboot(test_frames, 2);
+  
+  printf("Doing transmit of..: \n");
+  int i,j;
+  nbytes = 0;
+  for (i=0; i<2; i++)
+  {
+    printf("Frame:");
+     printf("%20x  ", test_frames[i].can_id);
+     for (j=0; j<test_frames[i].can_dlc; j++) printf("%02x", test_frames[i].data[j]);
+     printf("\n");
 
-  nbytes = write(can_socket, &test_frame, sizeof(struct can_frame));
+     nbytes += write(can_socket, &test_frames[i], sizeof(struct can_frame));
+  }
+
+  //nbytes = write(can_socket, &test_frame, sizeof(struct can_frame));
 
   printf("Wrote %d bytes\n", nbytes);
   return 0;
