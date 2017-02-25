@@ -1,4 +1,5 @@
 #include "bldc.h"
+#include <stdio.h>
 
 void bldc_buffer_append_int16(uint8_t* buffer, int16_t number, int32_t *index)
 {
@@ -112,14 +113,49 @@ void bldc_set_erpm(struct can_frame *frame, int id, int32_t erpm)
 
 //-------------------------------------------------------------------------------------
 
-void bldc_get_status(struct can_frame *frame, bldc_status *status)
+int bldc_get_status(struct can_frame *frame, bldc_status *status)
 {
   int ind = 0;
-  status->id = frame->can_id & 0xFF;
-  status->erpm = (float)bldc_buffer_get_int32(frame->data, &ind);
-  status->current_motor = (float)bldc_buffer_get_int16(frame->data, &ind) / 100.0;
-  status->duty_now = (float)bldc_buffer_get_int16(frame->data, &ind) / 1000.0;
+  
+  // Verify the frame id and can id:
+  if ( (status->id ==0) && ((frame->can_id & 0xFF) == status->id))
+    return -1;
+
+  // Read the selected data:
+  switch (frame->can_id >> 8)
+  {
+    case BLDC_PACKET_STATUS:
+      status->erpm = (float)bldc_buffer_get_int32(frame->data, &ind);
+      status->current_motor = (float)bldc_buffer_get_int16(frame->data, &ind) / 100.0;
+      status->duty_now = (float)bldc_buffer_get_int16(frame->data, &ind) / 1000.0;
+      return 1;
+    
+    case BLDC_PACKET_STATUS2:
+      status->current_input = (float)bldc_buffer_get_int16(frame->data, &ind) /100.0;
+      status->voltage_input = (float)bldc_buffer_get_int16(frame->data, &ind) /1000.0;
+      status->uptime = bldc_buffer_get_uint32(frame->data, &ind);
+      return 2;
+
+    case BLDC_PACKET_STATUS3:
+      status->temperature_mos1 = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;;
+      status->temperature_motor = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;
+      status->fault_code = frame->data[ind++];
+      return 3;
+
+    default:
+      return 0;
+  }
 }
+
+
+//void bldc_get_status(struct can_frame *frame, bldc_status *status)
+//{
+//  int ind = 0;
+//  status->id = frame->can_id & 0xFF;
+//  status->erpm = (float)bldc_buffer_get_int32(frame->data, &ind);
+//  status->current_motor = (float)bldc_buffer_get_int16(frame->data, &ind) / 100.0;
+//  status->duty_now = (float)bldc_buffer_get_int16(frame->data, &ind) / 1000.0;
+//}
 
 void bldc_get_status2(struct can_frame *frame, bldc_status2 *status)
 {
@@ -172,7 +208,7 @@ void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uin
   uint8_t frame_cnt = 0;
 
   // Generate a CRC for the encoded data:
-  uint16_t crc = crc16(tx_buffer, tx_len);
+  uint16_t crc = bldc_crc16(tx_buffer, tx_len);
 
   // First generate the can packets:
   BLDC_PACKET_ID ctl = BLDC_PACKET_FILL_RX_BUFFER;
@@ -244,7 +280,7 @@ const uint16_t crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
 		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
 
 // Function to generate CRC:
-uint16_t crc16(uint8_t* buf, unsigned int len)
+uint16_t bldc_crc16(uint8_t* buf, unsigned int len)
 {
 	unsigned int i;
 	unsigned short cksum = 0;
