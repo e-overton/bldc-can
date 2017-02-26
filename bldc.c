@@ -77,10 +77,10 @@ float bldc_buffer_get_float32(const uint8_t *buffer, float scale, int32_t *index
 
 canid_t bldc_gen_can_id(BLDC_PACKET_ID pack_id, uint8_t vesc_can_id)
 {
-  // LSB byte is the controller id.
-  // Nexy lowest byte is the packet id.
-  // Frame need to be sent in 'extended frame format', so add 0x80000000.
-  return vesc_can_id || ((uint8_t)pack_id << 8) || 0x80000000;
+  uint32_t id = vesc_can_id;     // LSB byte is the controller id.
+  id |= (uint32_t)pack_id << 8;  // Next lowest byte is the packet id.
+  id |= 0x80000000;              // Send in Extended Frame Format.
+  return id;
 }
 
 //------------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ int bldc_get_status(const struct can_frame *frame, bldc_status *status)
   uint8_t pack_id = frame->can_id >> 8;  
 
   // Verify the frame id and can id:
-  if ( (status->id <=0) && (pack_id == status->id))
+  if ( (status->id >0) && (recv_id != status->id))
     return -1;
 
   //printf ("can id:%i, frame id:%i\n", recv_id, pack_id);
@@ -180,7 +180,23 @@ uint8_t bldc_reboot(struct can_frame frames[], int id)
    return 2;
 };
 
+uint8_t bldc_get_values(struct can_frame frames[], int id)
+{
+   uint8_t tx_buffer[1];
+   tx_buffer[0] = COMM_GET_VALUES;
 
+   bldc_gen_proc_cmd(frames, id, tx_buffer, 1);
+
+   int i,j;
+   for (i=0; i<2; i++)
+   {
+      printf("%20x  ", frames[i].can_id);
+      for (j=0; j<frames[i].can_dlc; j++) printf("%02x", frames[i].data[j]);
+      printf("\n");
+   }
+
+   return 2;
+}
 
 void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t tx_len)
 {
@@ -226,7 +242,7 @@ void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffe
   frames[frame_cnt].can_dlc = 6;
 }
 
-int bldc_fill_rxbuf(const struct can_frame frame, int id,  uint8_t rx_buffer[], uint16_t maxlen)
+int bldc_fill_rxbuf(const struct can_frame *frame, int id,  uint8_t rx_buffer[], uint16_t maxlen)
 {
   uint16_t index;
   uint16_t rx_len;
@@ -235,33 +251,34 @@ int bldc_fill_rxbuf(const struct can_frame frame, int id,  uint8_t rx_buffer[], 
   int rval;
 
   // Read a fill frame
-  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER, id))
+  if (frame->can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER, id))
   {
-      index = (uint8_t)frame.data[0];
-      if (index + frame.can_dlc - 1 < maxlen)
+      index = (uint8_t)frame->data[0];
+      if (index + frame->can_dlc - 1 < maxlen)
       {
-        memcpy(rx_buffer+index, frame.data+1, frame.can_dlc -1);
+        memcpy(rx_buffer+index, frame->data+1, frame->can_dlc -1);
       }
     rval = 0;
   }
 
   // Read a fill frame, for index > 255.
-  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER_LONG, id))
+  if (frame->can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER_LONG, id))
   {
-      index = (uint16_t)frame.data[0] << 8 || (uint16_t) frame.data[1];
-      if (index + frame.can_dlc - 1 < maxlen)
+      index = (uint16_t)frame->data[0] << 8 | (uint16_t) frame->data[1];
+      if (index + frame->can_dlc - 1 < maxlen)
       {
-        memcpy(rx_buffer+index, frame.data+2, frame.can_dlc -2);
+        memcpy(rx_buffer+index, frame->data+2, frame->can_dlc -2);
       }
     rval = 0;
   }
 
   // Read the final frame:
-  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_PROCESS_RX_BUFFER, id))
+  if (frame->can_id == bldc_gen_can_id(BLDC_PACKET_PROCESS_RX_BUFFER, id))
   {
-     controller_id = frame.data[0];
-     rx_len = (uint16_t) frame.data[2] << 8 || (uint16_t) frame.data[3];
-     crc = (uint16_t) frame.data[4] << 8 || (uint16_t) frame.data[5];
+     controller_id = frame->data[0];
+     rx_len = ((uint16_t) frame->data[2] << 8) | (uint16_t) frame->data[3];
+     crc = (uint16_t) frame->data[4] << 8 | (uint16_t) frame->data[5];
+     
 
      if (crc == bldc_crc16(rx_buffer, rx_len))
      {

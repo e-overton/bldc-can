@@ -302,7 +302,7 @@ int bldc_get_status(const struct can_frame *frame, bldc_status *status);
 
 // Functions to write long commands to the VESC's buffer.
 uint8_t bldc_reboot(struct can_frame frames[], int id);
-
+uint8_t bldc_get_values(struct can_frame frames[], int id);
 
 /// Function to generate the CAN frames needed to process a command on the VESC
 /** Function to read part of the status infomation sent from a VESC
@@ -328,7 +328,7 @@ void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffe
     \param rx_buffer[] destination for filled data.
     \param maxlen max length of the recieve buffer.
 */
-int bldc_fill_rxbuf(const struct can_frame frame, int id,  uint8_t rx_buffer[], uint16_t maxlen);
+int bldc_fill_rxbuf(const struct can_frame * frame, int id,  uint8_t rx_buffer[], uint16_t maxlen);
 
 /// Generate a CRC16 from a array of bytes, to check data integrity on the VESC
 /** Function to generate a CRC16 checksum which the VESC will use to check
