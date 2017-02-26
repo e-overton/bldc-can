@@ -1,5 +1,6 @@
 #include "bldc.h"
 #include <stdio.h>
+#include <string.h>
 
 void bldc_buffer_append_int16(uint8_t* buffer, int16_t number, int32_t *index)
 {
@@ -74,51 +75,55 @@ float bldc_buffer_get_float32(const uint8_t *buffer, float scale, int32_t *index
   return (float)bldc_buffer_get_int32(buffer, index) / scale;
 }
 
+canid_t bldc_gen_can_id(BLDC_PACKET_ID pack_id, uint8_t vesc_can_id)
+{
+  // LSB byte is the controller id.
+  // Nexy lowest byte is the packet id.
+  // Frame need to be sent in 'extended frame format', so add 0x80000000.
+  return vesc_can_id || ((uint8_t)pack_id << 8) || 0x80000000;
+}
+
 //------------------------------------------------------------------------------------
 void bldc_set_duty(struct can_frame *frame, int id, float duty)
 {
-  BLDC_PACKET_ID ctl = BLDC_PACKET_SET_DUTY;
-  frame->can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
   int len = 0;
+  frame->can_id = bldc_gen_can_id(BLDC_PACKET_SET_DUTY, id);
   bldc_buffer_append_int32(frame->data, duty*100000.0 , &len);
   frame->can_dlc = len;
 }
 
 void bldc_set_current(struct can_frame *frame, int id, float current)
 {
-  BLDC_PACKET_ID ctl = BLDC_PACKET_SET_CURRENT;
-  frame->can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
   int len = 0;
+  frame->can_id = bldc_gen_can_id(BLDC_PACKET_SET_CURRENT, id);
   bldc_buffer_append_int32(frame->data, current*1000.0 , &len);
   frame->can_dlc = len;
 }
 
 void bldc_set_current_brake(struct can_frame *frame, int id, float current)
 {
-  BLDC_PACKET_ID ctl = BLDC_PACKET_SET_CURRENT_BRAKE;
-  frame->can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
   int len = 0;
+  frame->can_id = bldc_gen_can_id(BLDC_PACKET_SET_CURRENT_BRAKE, id);
   bldc_buffer_append_int32(frame->data, current*1000.0 , &len);
   frame->can_dlc = len;
 }
 
 void bldc_set_erpm(struct can_frame *frame, int id, int32_t erpm)
 {
-  BLDC_PACKET_ID ctl = BLDC_PACKET_SET_RPM;
-  frame->can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
   int len = 0;
+  frame->can_id = bldc_gen_can_id(BLDC_PACKET_SET_RPM, id);
   bldc_buffer_append_int32(frame->data, erpm , &len);
   frame->can_dlc = len;
 }
 
 //-------------------------------------------------------------------------------------
 
-int bldc_get_status(struct can_frame *frame, bldc_status *status)
+int bldc_get_status(const struct can_frame *frame, bldc_status *status)
 {
   int ind = 0;
   
   // Verify the frame id and can id:
-  if ( (status->id ==0) && ((frame->can_id & 0xFF) == status->id))
+  if ( (status->id <=0) && ((frame->can_id & 0xFF) == status->id))
     return -1;
 
   // Read the selected data:
@@ -148,34 +153,6 @@ int bldc_get_status(struct can_frame *frame, bldc_status *status)
 }
 
 
-//void bldc_get_status(struct can_frame *frame, bldc_status *status)
-//{
-//  int ind = 0;
-//  status->id = frame->can_id & 0xFF;
-//  status->erpm = (float)bldc_buffer_get_int32(frame->data, &ind);
-//  status->current_motor = (float)bldc_buffer_get_int16(frame->data, &ind) / 100.0;
-//  status->duty_now = (float)bldc_buffer_get_int16(frame->data, &ind) / 1000.0;
-//}
-
-void bldc_get_status2(struct can_frame *frame, bldc_status2 *status)
-{
-  int ind = 0;
-  status->id = frame->can_id & 0xFF;
-  status->current_input = (float)bldc_buffer_get_int16(frame->data, &ind) /100.0;
-  status->voltage_input = (float)bldc_buffer_get_int16(frame->data, &ind) /1000.0;
-  status->uptime = bldc_buffer_get_uint32(frame->data, &ind);
-}
-
-void bldc_get_status3(struct can_frame *frame, bldc_status3 *status)
-{
-  int ind = 0;
-  status->id = frame->can_id & 0xFF;
-  status->temperature_mos1 = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;;
-  status->temperature_motor = (float)bldc_buffer_get_uint16(frame->data, &ind) /100.0;
-  status->fault_code = frame->data[ind++];
-
-}
-
 //-------------------------------------------------------------------------------------
 
 uint8_t bldc_reboot(struct can_frame frames[], int id)
@@ -186,7 +163,7 @@ uint8_t bldc_reboot(struct can_frame frames[], int id)
    uint8_t tx_buffer[1];
    tx_buffer[0] = COMM_REBOOT;
 
-   bldc_process_cmd(frames, id, tx_buffer, 1);
+   bldc_gen_proc_cmd(frames, id, tx_buffer, 1);
 
    int i,j;
    for (i=0; i<2; i++)
@@ -201,7 +178,7 @@ uint8_t bldc_reboot(struct can_frame frames[], int id)
 
 
 
-void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uint8_t tx_len)
+void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t tx_len)
 {
   uint8_t i = 0;
   uint8_t j = 0;
@@ -210,9 +187,7 @@ void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uin
   // Generate a CRC for the encoded data:
   uint16_t crc = bldc_crc16(tx_buffer, tx_len);
 
-  // First generate the can packets:
-  BLDC_PACKET_ID ctl = BLDC_PACKET_FILL_RX_BUFFER;
-
+  // Generate the frames to transderr tx_buffer to the vesc rx_buffer.
   for (i=0; i<tx_len; i++)
   {
     if (j==8)
@@ -223,30 +198,82 @@ void bldc_process_cmd(struct can_frame frames[], int id, uint8_t* tx_buffer, uin
 
     if (j==0)
     {
-       frames[frame_cnt].can_id = (id & 0xFF) + ((uint8_t)ctl << 8) + 0x80000000;
-       frames[frame_cnt].can_dlc = 8;
+       frames[frame_cnt].can_id = bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER, id);
+       frames[frame_cnt].can_dlc = 1;
        frames[frame_cnt].data[0] = frame_cnt;
        j++;
     }
 
     frames[frame_cnt].data[j] = tx_buffer[i];
+    frames[frame_cnt].can_dlc++;
     j++;
   }
 
   frame_cnt++;
 
   // Second, generate the process command:
-  BLDC_PACKET_ID process = BLDC_PACKET_PROCESS_RX_BUFFER;
-  frames[frame_cnt].can_id = (id & 0xFF) + ((uint8_t)process << 8) + 0x80000000;  
+  frames[frame_cnt].can_id = bldc_gen_can_id(BLDC_PACKET_PROCESS_RX_BUFFER, id);
   frames[frame_cnt].data[0] = 0x0; // rx_buffer_last_id - the address to send the command to
   frames[frame_cnt].data[1] = 0x0; // set to true if the command is to be relayed.
   frames[frame_cnt].data[2] = 0xFF & (tx_len>>8); // upper byte of txlen
   frames[frame_cnt].data[3] = 0xFF & tx_len;   // lower byte of txlen
   frames[frame_cnt].data[4] = 0xFF & (crc>>8); // crc high
   frames[frame_cnt].data[5] = 0xFF & crc;   // crc low
-  frames[frame_cnt].can_dlc = 8;
-
+  frames[frame_cnt].can_dlc = 6;
 }
+
+int bldc_fill_rxbuf(const struct can_frame frame, int id,  uint8_t rx_buffer[], uint16_t maxlen)
+{
+  uint16_t index;
+  uint16_t rx_len;
+  uint16_t controller_id;
+  uint16_t crc;
+  int rval;
+
+  // Read a fill frame
+  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER, id))
+  {
+      index = (uint8_t)frame.data[0];
+      if (index + frame.can_dlc - 1 < maxlen)
+      {
+        memcpy(rx_buffer+index, frame.data+1, frame.can_dlc -1);
+      }
+    rval = 0;
+  }
+
+  // Read a fill frame, for index > 255.
+  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER_LONG, id))
+  {
+      index = (uint16_t)frame.data[0] << 8 || (uint16_t) frame.data[1];
+      if (index + frame.can_dlc - 1 < maxlen)
+      {
+        memcpy(rx_buffer+index, frame.data+2, frame.can_dlc -2);
+      }
+    rval = 0;
+  }
+
+  // Read the final frame:
+  if (frame.can_id == bldc_gen_can_id(BLDC_PACKET_PROCESS_RX_BUFFER, id))
+  {
+     controller_id = frame.data[0];
+     rx_len = (uint16_t) frame.data[2] << 8 || (uint16_t) frame.data[3];
+     crc = (uint16_t) frame.data[4] << 8 || (uint16_t) frame.data[5];
+
+     if (crc == bldc_crc16(rx_buffer, rx_len))
+     {
+        rval = rx_len;
+     }
+     else
+     {
+       rval = -rx_len;
+     }
+  }
+
+
+
+  return rval;
+}
+
 
 // Table for CRC16 generation.
 const uint16_t crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
@@ -280,7 +307,7 @@ const uint16_t crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
 		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
 
 // Function to generate CRC:
-uint16_t bldc_crc16(uint8_t* buf, unsigned int len)
+uint16_t bldc_crc16(const uint8_t* buf, unsigned int len)
 {
 	unsigned int i;
 	unsigned short cksum = 0;
