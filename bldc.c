@@ -121,13 +121,17 @@ void bldc_set_erpm(struct can_frame *frame, int id, int32_t erpm)
 int bldc_get_status(const struct can_frame *frame, bldc_status *status)
 {
   int ind = 0;
-  
+  uint8_t recv_id = frame->can_id;
+  uint8_t pack_id = frame->can_id >> 8;  
+
   // Verify the frame id and can id:
-  if ( (status->id <=0) && ((frame->can_id & 0xFF) == status->id))
+  if ( (status->id <=0) && (pack_id == status->id))
     return -1;
 
+  //printf ("can id:%i, frame id:%i\n", recv_id, pack_id);
+
   // Read the selected data:
-  switch (frame->can_id >> 8)
+  switch (pack_id)
   {
     case BLDC_PACKET_STATUS:
       status->erpm = (float)bldc_buffer_get_int32(frame->data, &ind);
