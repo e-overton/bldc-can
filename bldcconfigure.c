@@ -54,5 +54,5 @@ int main(int argc, char** argv){
 
   bldc_mc_configuration mc;
   bldc_get_mc(can_socket, 2, &mc, &cmd_timeout);
-
+  printf ("Current max: %f\n", mc.l_current_max);
 }

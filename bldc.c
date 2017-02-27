@@ -234,11 +234,13 @@ uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mcconf, stru
   uint8_t tx_buffer[1];
   uint8_t rx_buffer[BLDC_RX_BUF_LEN];
   tx_buffer[0] = COMM_GET_MCCONF;
-  int ind = 0;
+  int ind = 1;
 
-  int val = bldc_comm_buffer(can_socket, id, tx_buffer, 1, rx_buffer, 20, timeout);
+  int val = bldc_comm_buffer(can_socket, id, tx_buffer, 1, rx_buffer, BLDC_RX_BUF_LEN, timeout);
   if (val > 0)
   {
+    printf("Parsing config...\n");
+
     mcconf->pwm_mode = rx_buffer[ind++];
     mcconf->comm_mode = rx_buffer[ind++];
     mcconf->motor_type = rx_buffer[ind++];
