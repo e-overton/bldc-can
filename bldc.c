@@ -216,7 +216,7 @@ uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * min
   {
     *major = rx_buffer[1];
     *minor = rx_buffer[2];
-    printf("Read FW Version %i.%i", *major, *minor);
+    //printf("Read FW Version %i.%i", *major, *minor);
   }
 
 }
@@ -266,7 +266,7 @@ int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer
   frames[frame_cnt].data[5] = 0xFF & crc;   // crc low
   frames[frame_cnt].can_dlc = 6;
 
-  return frame_cnt;
+  return frame_cnt+1;
 }
 
 int bldc_fill_rxbuf(const struct can_frame *frame, int id,  uint8_t rx_buffer[], uint16_t maxlen)
@@ -317,6 +317,14 @@ int bldc_fill_rxbuf(const struct can_frame *frame, int id,  uint8_t rx_buffer[],
      }
   }
 
+  // Read a short buffer:
+  if (frame->can_id == bldc_gen_can_id(BLDC_PACKET_PROCESS_SHORT_BUFFER, id))
+  {
+     //printf("Processing a short buffer: %i\n", frame->can_dlc); 
+     memcpy(rx_buffer, frame->data+2, frame->can_dlc -2);
+     rval = frame->can_dlc -2; 
+
+  }
 
 
   return rval;
@@ -347,7 +355,7 @@ int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const ui
   n_tx_frames = bldc_gen_proc_cmd(tx_frames, id, tx_buffer, tx_len);
   for (i=0; i<n_tx_frames; i++)
   {
-    nbytes = write(can_socket, tx_frames + i*sizeof(struct can_frame), sizeof(struct can_frame));
+    nbytes = write(can_socket, &tx_frames[i], sizeof(struct can_frame));
     if (nbytes != sizeof(struct can_frame))
     {
       printf("Error in TX\n");

@@ -48,5 +48,8 @@ int main(int argc, char** argv){
   // Now try to find the firmware version
   uint8_t major, minor;
   
-  bldc_get_firmware(can_socket, 2, major, minor, &cmd_timeout);
+  bldc_get_firmware(can_socket, 2, &major, &minor, &cmd_timeout);
+
+  printf("Read firmware from VESC: %i.%i\n", major, minor);
+
 }
