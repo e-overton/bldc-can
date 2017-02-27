@@ -3,6 +3,7 @@
 
 #include<linux/can.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 /** \file
     \brief  BLDC Library
@@ -11,6 +12,9 @@
     used on the VESC speed controller. The name of this
     library reflects the naming convention of the project 'bldc'.
  */
+
+#define BLDC_RX_BUF_LEN 1024
+#define BLDC_CANFRAME_BUF_LEN BLDC_RX_BUF_LEN/6 + 1
 
 /// A struct containing all the extended status information available from a VESC.
 /** The struct contains all the status (including extended status) information
@@ -303,6 +307,7 @@ int bldc_get_status(const struct can_frame *frame, bldc_status *status);
 // Functions to write long commands to the VESC's buffer.
 uint8_t bldc_reboot(struct can_frame frames[], int id);
 uint8_t bldc_get_values(struct can_frame frames[], int id);
+uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * minor, struct timeval *timeout);
 
 /// Function to generate the CAN frames needed to process a command on the VESC
 /** Function to read part of the status infomation sent from a VESC
@@ -314,12 +319,26 @@ uint8_t bldc_get_values(struct can_frame frames[], int id);
 
     \param frames Array of frames to write data into.
     \param id Target VESC CAN id
-    \param txbuffer buffer to be transferred to the VESC rx buffer
+    \param tx_buffer buffer to be transferred to the VESC rx buffer
     \param len length of txbuffer.
     \retrun number of frames generated.
 */
-void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t len);
+int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t len);
 
+
+/// Function to transfer a buffer to the VESC and read back the result into a rx buffer.
+/** Some discription..
+
+    \param can_socket socket to use
+    \param id Target VESC CAN id
+    \param txbuffer buffer to be transferred to the VESC rx buffer
+    \param tx_len length of txbuffer.
+    \param rx_buffer buffer to be transferred to the VESC rx buffer
+    \param rx_len length of data returned.
+    \retrun status...
+*/
+int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const uint16_t tx_len,
+                     uint8_t rx_buffer[], uint16_t rx_len, struct timeval *timeout);
 
 /// Function to take recieved data from the VESC and fill a recieve buffer.
 /** Fills data from a can frame into the RX buffer.

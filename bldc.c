@@ -1,6 +1,13 @@
 #include "bldc.h"
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <sys/select.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <fcntl.h>
 
 void bldc_buffer_append_int16(uint8_t* buffer, int16_t number, int32_t *index)
 {
@@ -198,7 +205,25 @@ uint8_t bldc_get_values(struct can_frame frames[], int id)
    return 2;
 }
 
-void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t tx_len)
+uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * minor, struct timeval *timeout)
+{
+  uint8_t tx_buffer[1];
+  uint8_t rx_buffer[20];
+  tx_buffer[0] = COMM_FW_VERSION;
+
+  int val = bldc_comm_buffer(can_socket, id, tx_buffer, 1, rx_buffer, 20, timeout);
+  if (val > 0)
+  {
+    *major = rx_buffer[1];
+    *minor = rx_buffer[2];
+    printf("Read FW Version %i.%i", *major, *minor);
+  }
+
+}
+
+
+
+int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t tx_len)
 {
   uint8_t i = 0;
   uint8_t j = 0;
@@ -240,6 +265,8 @@ void bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffe
   frames[frame_cnt].data[4] = 0xFF & (crc>>8); // crc high
   frames[frame_cnt].data[5] = 0xFF & crc;   // crc low
   frames[frame_cnt].can_dlc = 6;
+
+  return frame_cnt;
 }
 
 int bldc_fill_rxbuf(const struct can_frame *frame, int id,  uint8_t rx_buffer[], uint16_t maxlen)
@@ -292,6 +319,86 @@ int bldc_fill_rxbuf(const struct can_frame *frame, int id,  uint8_t rx_buffer[],
 
 
 
+  return rval;
+}
+
+// wrap up the other two functions in a more user friendly function call...
+int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const uint16_t tx_len,
+                     uint8_t rx_buffer[], uint16_t rx_len, struct timeval *timeout)
+{
+
+  struct timespec max_time, now_time;
+  fd_set readSet;
+  struct timeval can_timeout;
+  uint8_t read_can_port=0;
+  struct can_frame tx_frames[BLDC_CANFRAME_BUF_LEN];
+  struct can_frame rx_frame;
+  uint16_t i, n_tx_frames;
+  uint32_t nbytes;
+  int rval=0;
+
+  // Set abs_time to maximum time the function should be called for.
+  clock_gettime(CLOCK_MONOTONIC, &max_time);
+  max_time.tv_sec += timeout->tv_sec;
+  max_time.tv_nsec += timeout->tv_usec*1000;
+
+
+  // Generate and transmit thte frames:
+  n_tx_frames = bldc_gen_proc_cmd(tx_frames, id, tx_buffer, tx_len);
+  for (i=0; i<n_tx_frames; i++)
+  {
+    nbytes = write(can_socket, tx_frames + i*sizeof(struct can_frame), sizeof(struct can_frame));
+    if (nbytes != sizeof(struct can_frame))
+    {
+      printf("Error in TX\n");
+    }
+  }
+  
+  // Check we should be reading the returned data..
+  if ((rx_buffer != NULL) && (rx_len > 0))
+  {
+    read_can_port = 1;
+  }
+
+  // Read the port 
+  can_timeout.tv_sec = 1;
+  can_timeout.tv_usec = 0;
+  while (read_can_port)
+  {
+    FD_ZERO(&readSet);
+    FD_SET(can_socket, &readSet);
+    if (select((can_socket + 1), &readSet, NULL, NULL, &can_timeout) >= 0)
+    {
+      if (!read_can_port) break;
+
+      if (FD_ISSET(can_socket, &readSet))
+      {
+        nbytes = read(can_socket, &rx_frame, sizeof(struct can_frame));
+        if(nbytes)
+        {
+          // Test out the new read function:
+          rval = bldc_fill_rxbuf(&rx_frame, 0,  rx_buffer, rx_len);
+          //printf("completed packet read with value: %i\n", rval);
+          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[0], rxbuf[1], rxbuf[2],
+          //rxbuf[3], rxbuf[4], rxbuf[5], rxbuf[6], rxbuf[7]);
+          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[8], rxbuf[9], rxbuf[10],
+          //rxbuf[11], rxbuf[12], rxbuf[13], rxbuf[14], rxbuf[15]);
+          if (rval != 0)
+          {
+            read_can_port = 0;
+          }
+        }
+      }
+    }
+    // Check timeout:
+    clock_gettime(CLOCK_MONOTONIC, &now_time);
+    if ((now_time.tv_sec > max_time.tv_sec) && (now_time.tv_nsec > max_time.tv_nsec))
+    {
+      printf("Timeout exceeded");
+      read_can_port = 0;
+      rval = -1;
+    }
+  }
   return rval;
 }
 
