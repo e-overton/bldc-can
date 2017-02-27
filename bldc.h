@@ -4,6 +4,7 @@
 #include<linux/can.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <stdbool.h>
 
 /** \file
     \brief  BLDC Library
@@ -118,6 +119,136 @@ typedef enum {
 	COMM_SET_CHUCK_DATA,
 	COMM_CUSTOM_APP_DATA
 } COMM_PACKET_ID;
+
+typedef enum {
+	PWM_MODE_NONSYNCHRONOUS_HISW = 0, // This mode is not recommended
+	PWM_MODE_SYNCHRONOUS, // The recommended and most tested mode
+	PWM_MODE_BIPOLAR // Some glitches occasionally, can kill MOSFETs
+} BLDC_MC_PWM_MODE;
+
+typedef enum {
+	COMM_MODE_INTEGRATE = 0,
+	COMM_MODE_DELAY
+} BLDC_MC_COMM_MODE;
+
+typedef enum {
+	SENSOR_MODE_SENSORLESS = 0,
+	SENSOR_MODE_SENSORED,
+	SENSOR_MODE_HYBRID
+} BLDC_MC_SENSOR_MODE;
+
+typedef enum {
+	FOC_SENSOR_MODE_SENSORLESS = 0,
+	FOC_SENSOR_MODE_ENCODER,
+	FOC_SENSOR_MODE_HALL
+} BLDC_MC_FOC_SENSOR_MODE;
+
+typedef enum {
+	MOTOR_TYPE_BLDC = 0,
+	MOTOR_TYPE_DC,
+	MOTOR_TYPE_FOC
+} BLDC_MC_MOTOR_TYPE;
+
+typedef enum {
+	SENSOR_PORT_MODE_HALL = 0,
+	SENSOR_PORT_MODE_ABI,
+	SENSOR_PORT_MODE_AS5047_SPI
+} BLDC_SENSOR_PORT_MODE;
+
+/// struct which contains all motor configuration. 
+/** The 
+*/
+typedef struct {
+	// Switching and drive
+	BLDC_MC_PWM_MODE pwm_mode;
+	BLDC_MC_COMM_MODE comm_mode;
+	BLDC_MC_MOTOR_TYPE motor_type;
+	BLDC_MC_SENSOR_MODE sensor_mode;
+	// Limits
+	float l_current_max;
+	float l_current_min;
+	float l_in_current_max;
+	float l_in_current_min;
+	float l_abs_current_max;
+	float l_min_erpm;
+	float l_max_erpm;
+	float l_max_erpm_fbrake;
+	float l_max_erpm_fbrake_cc;
+	float l_min_vin;
+	float l_max_vin;
+	float l_battery_cut_start;
+	float l_battery_cut_end;
+	bool l_slow_abs_current;
+	bool l_rpm_lim_neg_torque;
+	float l_temp_fet_start;
+	float l_temp_fet_end;
+	float l_temp_motor_start;
+	float l_temp_motor_end;
+	float l_min_duty;
+	float l_max_duty;
+	// Overridden limits (Computed during runtime)
+	float lo_current_max;
+	float lo_current_min;
+	float lo_in_current_max;
+	float lo_in_current_min;
+	// Sensorless
+	float sl_min_erpm;
+	float sl_min_erpm_cycle_int_limit;
+	float sl_max_fullbreak_current_dir_change;
+	float sl_cycle_int_limit;
+	float sl_phase_advance_at_br;
+	float sl_cycle_int_rpm_br;
+	float sl_bemf_coupling_k;
+	// Hall sensor
+	int8_t hall_table[8];
+	float hall_sl_erpm;
+	// FOC
+	float foc_current_kp;
+	float foc_current_ki;
+	float foc_f_sw;
+	float foc_dt_us;
+	float foc_encoder_offset;
+	bool foc_encoder_inverted;
+	float foc_encoder_ratio;
+	float foc_motor_l;
+	float foc_motor_r;
+	float foc_motor_flux_linkage;
+	float foc_observer_gain;
+	float foc_pll_kp;
+	float foc_pll_ki;
+	float foc_duty_dowmramp_kp;
+	float foc_duty_dowmramp_ki;
+	float foc_openloop_rpm;
+	float foc_sl_openloop_hyst;
+	float foc_sl_openloop_time;
+	float foc_sl_d_current_duty;
+	float foc_sl_d_current_factor;
+	BLDC_MC_FOC_SENSOR_MODE foc_sensor_mode;
+	uint8_t foc_hall_table[8];
+	float foc_sl_erpm;
+	// Speed PID
+	float s_pid_kp;
+	float s_pid_ki;
+	float s_pid_kd;
+	float s_pid_min_erpm;
+	// Pos PID
+	float p_pid_kp;
+	float p_pid_ki;
+	float p_pid_kd;
+	float p_pid_ang_div;
+	// Current controller
+	float cc_startup_boost_duty;
+	float cc_min_current;
+	float cc_gain;
+	float cc_ramp_step_max;
+	// Misc
+	int32_t m_fault_stop_time_ms;
+	float m_duty_ramp_step;
+	float m_duty_ramp_step_rpm_lim;
+	float m_current_backoff_gain;
+	uint32_t m_encoder_counts;
+	BLDC_SENSOR_PORT_MODE m_sensor_port_mode;
+} bldc_mc_configuration;
 
 /// A VESC compatible function to append a 16bit integer to a bit stream.
 /** The integer is written to the index position of the buffer, while the
@@ -307,7 +438,47 @@ int bldc_get_status(const struct can_frame *frame, bldc_status *status);
 // Functions to write long commands to the VESC's buffer.
 uint8_t bldc_reboot(struct can_frame frames[], int id);
 uint8_t bldc_get_values(struct can_frame frames[], int id);
+
+
+/// Function to reset a speed controller
+/** Reset a speed controller
+
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+*/
+void bldc_reset(int can_socket, int id);
+
+/// Function to get the firmware version of a VESC
+/** Read the firmware version from a vesc
+
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+    \param major major version is written here on success.
+    \param minor major version is written here on success.
+    \param timeout time to wait for responce from VESC.
+*/
 uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * minor, struct timeval *timeout);
+
+/// Function to get the firmware version of a VESC
+/** Read the firmware version from a vesc
+
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+    \param major major version is written here on success.
+    \param minor major version is written here on success.
+    \param timeout time to wait for responce from VESC.
+*/
+uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * minor, struct timeval *timeout);
+
+/// Read the motor configuration from the VESC
+/** Read the motor configuration from the VESC
+
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+    \param mc motor configuration
+    \param timeout time to wait for responce from VESC.
+*/
+uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mc, struct timeval *timeout);
 
 /// Function to generate the CAN frames needed to process a command on the VESC
 /** Function to read part of the status infomation sent from a VESC
@@ -327,15 +498,17 @@ int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer
 
 
 /// Function to transfer a buffer to the VESC and read back the result into a rx buffer.
-/** Some discription..
+/** Send and execute the tx_buffer on the VESC, and wait for a responce to the rx_buffer, 
+    if it is available (not NULL), and its length is larger than 0.
 
     \param can_socket socket to use
     \param id Target VESC CAN id
     \param txbuffer buffer to be transferred to the VESC rx buffer
     \param tx_len length of txbuffer.
     \param rx_buffer buffer to be transferred to the VESC rx buffer
-    \param rx_len length of data returned.
-    \retrun status...
+    \param rx_len length of rx buffer.
+    \retrun number of bytes read, or a -ve number indicating failure. Timeouts return
+            -1, and CRC errors return -nbytes.
 */
 int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const uint16_t tx_len,
                      uint8_t rx_buffer[], uint16_t rx_len, struct timeval *timeout);

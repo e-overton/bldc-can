@@ -205,6 +205,14 @@ uint8_t bldc_get_values(struct can_frame frames[], int id)
    return 2;
 }
 
+void bldc_reset(int can_socket, int id)
+{
+   struct timeval timeout;
+   uint8_t tx_buffer[1];
+   tx_buffer[0] = COMM_REBOOT;
+   bldc_comm_buffer(can_socket, id, tx_buffer, 1, NULL, 0, &timeout);
+}
+
 uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * minor, struct timeval *timeout)
 {
   uint8_t tx_buffer[1];
@@ -221,7 +229,108 @@ uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * min
 
 }
 
+uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mcconf, struct timeval *timeout)
+{
+  uint8_t tx_buffer[1];
+  uint8_t rx_buffer[BLDC_RX_BUF_LEN];
+  tx_buffer[0] = COMM_GET_MCCONF;
+  int ind = 0;
 
+  int val = bldc_comm_buffer(can_socket, id, tx_buffer, 1, rx_buffer, 20, timeout);
+  if (val > 0)
+  {
+    mcconf->pwm_mode = rx_buffer[ind++];
+    mcconf->comm_mode = rx_buffer[ind++];
+    mcconf->motor_type = rx_buffer[ind++];
+    mcconf->sensor_mode = rx_buffer[ind++];
+
+    mcconf->l_current_max = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_current_min = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_in_current_max = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_in_current_min = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_abs_current_max = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_min_erpm = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_max_erpm = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_max_erpm_fbrake = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_max_erpm_fbrake_cc = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_min_vin = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_max_vin = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_battery_cut_start = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_battery_cut_end = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_slow_abs_current = rx_buffer[ind++];
+    mcconf->l_rpm_lim_neg_torque = rx_buffer[ind++];
+    mcconf->l_temp_fet_start = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_temp_fet_end = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_temp_motor_start = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_temp_motor_end = bldc_buffer_get_float32(rx_buffer, 1000.0, &ind);
+    mcconf->l_min_duty = bldc_buffer_get_float32(rx_buffer, 1000000.0, &ind);
+    mcconf->l_max_duty = bldc_buffer_get_float32(rx_buffer, 1000000.0, &ind);
+
+    mcconf->lo_current_max = mcconf->l_current_max;
+    mcconf->lo_current_min = mcconf->l_current_min;
+    mcconf->lo_in_current_max = mcconf->l_in_current_max;
+    mcconf->lo_in_current_min = mcconf->l_in_current_min;
+
+    mcconf->sl_min_erpm = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_min_erpm_cycle_int_limit = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_max_fullbreak_current_dir_change = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_cycle_int_limit = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_phase_advance_at_br = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_cycle_int_rpm_br = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->sl_bemf_coupling_k = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+
+    memcpy(mcconf->hall_table, rx_buffer + ind, 8);
+    ind += 8;
+    mcconf->hall_sl_erpm = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+
+    mcconf->foc_current_kp = bldc_buffer_get_float32(rx_buffer, 1e5, &ind);
+    mcconf->foc_current_ki = bldc_buffer_get_float32(rx_buffer, 1e5, &ind);
+    mcconf->foc_f_sw = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_dt_us = bldc_buffer_get_float32(rx_buffer, 1e6, &ind);
+    mcconf->foc_encoder_inverted = rx_buffer[ind++];
+    mcconf->foc_encoder_offset = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_encoder_ratio = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_sensor_mode = rx_buffer[ind++];
+    mcconf->foc_pll_kp = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_pll_ki = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_motor_l = bldc_buffer_get_float32(rx_buffer, 1e8, &ind);
+    mcconf->foc_motor_r = bldc_buffer_get_float32(rx_buffer, 1e5, &ind);
+    mcconf->foc_motor_flux_linkage = bldc_buffer_get_float32(rx_buffer, 1e5, &ind);
+    mcconf->foc_observer_gain = bldc_buffer_get_float32(rx_buffer, 1e0, &ind);
+    mcconf->foc_duty_dowmramp_kp = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_duty_dowmramp_ki = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_openloop_rpm = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_sl_openloop_hyst = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_sl_openloop_time = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_sl_d_current_duty = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    mcconf->foc_sl_d_current_factor = bldc_buffer_get_float32(rx_buffer, 1e3, &ind);
+    memcpy(mcconf->foc_hall_table, rx_buffer + ind, 8);
+    ind += 8;
+    mcconf->foc_sl_erpm = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+
+    mcconf->s_pid_kp = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->s_pid_ki = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->s_pid_kd = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->s_pid_min_erpm = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+
+    mcconf->p_pid_kp = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->p_pid_ki = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->p_pid_kd = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->p_pid_ang_div = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 100000.0;
+
+    mcconf->cc_startup_boost_duty = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->cc_min_current = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000.0;
+    mcconf->cc_gain = (float)bldc_buffer_get_int32(rx_buffer, &ind) / 1000000.0;
+    mcconf->cc_ramp_step_max = bldc_buffer_get_float32(rx_buffer, 1e6, &ind);
+
+    mcconf->m_fault_stop_time_ms = bldc_buffer_get_int32(rx_buffer, &ind);
+    mcconf->m_duty_ramp_step = (float)bldc_buffer_get_float32(rx_buffer, 1000000.0, &ind);
+    mcconf->m_duty_ramp_step_rpm_lim = (float)bldc_buffer_get_float32(rx_buffer, 1000000.0, &ind);
+    mcconf->m_current_backoff_gain = (float)bldc_buffer_get_float32(rx_buffer, 1000000.0, &ind);
+    mcconf->m_encoder_counts = bldc_buffer_get_uint32(rx_buffer, &ind);
+    mcconf->m_sensor_port_mode = rx_buffer[ind++];
+  }
+}
 
 int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t tx_len)
 {
@@ -386,11 +495,6 @@ int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const ui
         {
           // Test out the new read function:
           rval = bldc_fill_rxbuf(&rx_frame, 0,  rx_buffer, rx_len);
-          //printf("completed packet read with value: %i\n", rval);
-          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[0], rxbuf[1], rxbuf[2],
-          //rxbuf[3], rxbuf[4], rxbuf[5], rxbuf[6], rxbuf[7]);
-          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[8], rxbuf[9], rxbuf[10],
-          //rxbuf[11], rxbuf[12], rxbuf[13], rxbuf[14], rxbuf[15]);
           if (rval != 0)
           {
             read_can_port = 0;

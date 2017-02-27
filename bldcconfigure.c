@@ -17,7 +17,7 @@ int main(int argc, char** argv){
   int nbytes;
   struct timeval cmd_timeout;
   
-  cmd_timeout.tv_sec = 2;
+  cmd_timeout.tv_sec = 5;
   cmd_timeout.tv_usec = 0;
 
   printf("bldcconfigure \n");
@@ -51,5 +51,8 @@ int main(int argc, char** argv){
   bldc_get_firmware(can_socket, 2, &major, &minor, &cmd_timeout);
 
   printf("Read firmware from VESC: %i.%i\n", major, minor);
+
+  bldc_mc_configuration mc;
+  bldc_get_mc(can_socket, 2, &mc, &cmd_timeout);
 
 }
