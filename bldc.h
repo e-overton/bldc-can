@@ -480,6 +480,16 @@ uint8_t bldc_get_firmware(int can_socket, int id, uint8_t * major, uint8_t * min
 */
 uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mc, struct timeval *timeout);
 
+/// Write motor configuration from the VESC
+/** Read the motor configuration from the VESC
+
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+    \param mc motor configuration
+    \param timeout time to wait for responce from VESC.
+*/
+uint8_t bldc_set_mc(int can_socket, int id, bldc_mc_configuration * mc, struct timeval *timeout);
+
 /// Function to generate the CAN frames needed to process a command on the VESC
 /** Function to read part of the status infomation sent from a VESC
     and update the status structure accordingly.
@@ -494,7 +504,7 @@ uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mc, struct t
     \param len length of txbuffer.
     \retrun number of frames generated.
 */
-int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], uint8_t len);
+int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], const uint16_t tx_len);
 
 
 /// Function to transfer a buffer to the VESC and read back the result into a rx buffer.

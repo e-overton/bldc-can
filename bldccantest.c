@@ -25,6 +25,11 @@ int main(int varc, char* varv[])
 
   printf("Starting application\n");
 
+  bldc_mc_configuration mc;
+  bldc_set_mc(can_socket, 2, &mc, NULL);
+
+  return 0;
+
   // Setup CAN interface:
   can_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW);
   strcpy(can_ifr.ifr_name, ifname);
