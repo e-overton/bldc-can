@@ -25,11 +25,6 @@ int main(int varc, char* varv[])
 
   printf("Starting application\n");
 
-  bldc_mc_configuration mc;
-  bldc_set_mc(can_socket, 2, &mc, NULL);
-
-  return 0;
-
   // Setup CAN interface:
   can_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW);
   strcpy(can_ifr.ifr_name, ifname);
@@ -49,61 +44,11 @@ int main(int varc, char* varv[])
 		return -2;
 	}
 
-  bldc_set_erpm(&test_frame, 45, 9000);
+  //bldc_set_erpm(&test_frame, 45, 9000);
+  float servo_ms, servo_ms_last;
 
-  struct can_frame test_frames[10];
-  //int nframes = bldc_reboot(test_frames, 2);
-  int nframes = bldc_get_values(test_frames, 2);  
+  bldc_get_decoded_ppm(can_socket, 2, &servo_ms, &servo_ms_last, NULL);
+  printf("BLDC ppm: %f, %f\n", servo_ms, servo_ms_last); 
 
-  printf("Doing transmit of..: \n");
-  int i,j;
-  nbytes = 0;
-  for (i=0; i<2; i++)
-  {
-    printf("Frame:");
-     printf("%20x  ", test_frames[i].can_id);
-     for (j=0; j<test_frames[i].can_dlc; j++) printf("%02x", test_frames[i].data[j]);
-     printf("\n");
-
-     nbytes += write(can_socket, &test_frames[i], sizeof(struct can_frame));
-  }
-
-  // now read the returned bytes:
-  int read_can_port = 1;
-  fd_set readSet;
-  uint8_t rxbuf[100];
-  for (i=0; i<100; i++) rxbuf[i] = 0;
-  struct can_frame recv_frame;
-  struct timeval can_timeout;
-  can_timeout.tv_sec = 1;
-  can_timeout.tv_usec = 0;
-  while (read_can_port)
-  {
-    FD_ZERO(&readSet);
-    FD_SET(can_socket, &readSet);
-    if (select((can_socket + 1), &readSet, NULL, NULL, &can_timeout) >= 0)
-    {
-      if (!read_can_port) break;
-
-      if (FD_ISSET(can_socket, &readSet))
-      {
-        nbytes = read(can_socket, &recv_frame, sizeof(struct can_frame));
-	if(nbytes)
-  	{
-          // Test out the new read function:
-          int rval = bldc_fill_rxbuf(&recv_frame, 0,  rxbuf, 100);
-          printf("completed packet read with value: %i\n", rval);
-          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[0], rxbuf[1], rxbuf[2],
-          //rxbuf[3], rxbuf[4], rxbuf[5], rxbuf[6], rxbuf[7]);
-          //printf(" %2x %2x %2x %2x %2x %2x %2x %2x\n", rxbuf[8], rxbuf[9], rxbuf[10],
-          //rxbuf[11], rxbuf[12], rxbuf[13], rxbuf[14], rxbuf[15]); 
-        }
-      }
-    } 
-  }
-
-  //nbytes = write(can_socket, &test_frame, sizeof(struct can_frame));
-
-  printf("Wrote %d bytes\n", nbytes);
   return 0;
 }

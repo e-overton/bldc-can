@@ -490,6 +490,17 @@ uint8_t bldc_get_mc(int can_socket, int id, bldc_mc_configuration * mc, struct t
 */
 uint8_t bldc_set_mc(int can_socket, int id, bldc_mc_configuration * mc, struct timeval *timeout);
 
+
+/** Read the pwm input duty cycle
+    Read the duty cycle from the PPM input.
+    \param can_socket can socket to use.
+    \param id Target VESC CAN id
+    \param servo_ms median duty cycle in ms from the ppm input.
+    \param servo_ms_last  last duty cycle in ms read by the ppm input
+    \param timeout time to wait for responce from VESC.
+*/
+uint8_t bldc_get_decoded_ppm(int can_socket, int id, float *servo_ms, float *servo_ms_last, struct timeval *timeout); 
+
 /// Function to generate the CAN frames needed to process a command on the VESC
 /** Function to read part of the status infomation sent from a VESC
     and update the status structure accordingly.

@@ -341,7 +341,7 @@ uint8_t bldc_set_mc(int can_socket, int id, bldc_mc_configuration * mcconf, stru
   int ind = 0;
 
   // using get command until code is checked (for sanity).
-  tx_buffer[ind++] = COMM_GET_MCCONF;
+  tx_buffer[ind++] = COMM_SET_MCCONF;
 
   // Bystream the config:
 
@@ -432,6 +432,30 @@ uint8_t bldc_set_mc(int can_socket, int id, bldc_mc_configuration * mcconf, stru
 	tx_buffer[ind++] = mcconf->m_sensor_port_mode;
 
   printf("TX Length: %i\n",ind);
+
+  int val = bldc_comm_buffer(can_socket, id, tx_buffer, ind, rx_buffer, BLDC_RX_BUF_LEN, timeout);
+  if (val > 0)
+  {
+    printf("Got responce");
+
+  }
+}
+
+uint8_t bldc_get_decoded_ppm(int can_socket, int id, float *servo_ms, float *servo_ms_last, struct timeval *timeout)
+{
+  uint8_t tx_buffer[1];
+  uint8_t rx_buffer[20];
+  int index = 0;
+  tx_buffer[0] = COMM_GET_DECODED_PPM;
+
+  int val = bldc_comm_buffer(can_socket, id, tx_buffer, 1, rx_buffer, 20, timeout);
+  if (val > 0)
+  {
+    index = 1;
+    *servo_ms = (float)bldc_buffer_get_int32(rx_buffer, &index) / 1000000.0;
+    *servo_ms_last = (float)bldc_buffer_get_int32(rx_buffer, &index) / 1000000.0;
+  }
+
 }
 
 int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer[], const uint16_t tx_len)
@@ -450,6 +474,7 @@ int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer
     if (tx_pos < 255)
     {
       framebytes = (tx_len - tx_pos > 7) ? 7: tx_len - tx_pos;
+      printf("Writing Frame %i, with %i bytes\n", frame_cnt, framebytes);
       frames[frame_cnt].can_id = bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER, id);
       frames[frame_cnt].can_dlc = framebytes+1;
       frames[frame_cnt].data[0] = tx_pos;
@@ -459,7 +484,7 @@ int bldc_gen_proc_cmd(struct can_frame frames[], int id, const uint8_t tx_buffer
     {
       framebytes = (tx_len - tx_pos > 6) ? 6: tx_len - tx_pos;
       frames[frame_cnt].can_id = bldc_gen_can_id(BLDC_PACKET_FILL_RX_BUFFER_LONG, id);
-      frames[frame_cnt].can_dlc = framebytes+1;
+      frames[frame_cnt].can_dlc = framebytes+2;
       frames[frame_cnt].data[0] = tx_pos >> 8;
       frames[frame_cnt].data[1] = tx_pos;
       memcpy(frames[frame_cnt].data+2, tx_buffer+tx_pos, framebytes);
@@ -560,21 +585,37 @@ int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const ui
   uint16_t i, n_tx_frames;
   uint32_t nbytes;
   int rval=0;
+  uint8_t tx_retry;
 
   // Set abs_time to maximum time the function should be called for.
-  clock_gettime(CLOCK_MONOTONIC, &max_time);
-  max_time.tv_sec += timeout->tv_sec;
-  max_time.tv_nsec += timeout->tv_usec*1000;
-
+  if (timeout != NULL)
+  {
+    clock_gettime(CLOCK_MONOTONIC, &max_time);
+    max_time.tv_sec += timeout->tv_sec;
+    max_time.tv_nsec += timeout->tv_usec*1000;
+  }
 
   // Generate and transmit thte frames:
   n_tx_frames = bldc_gen_proc_cmd(tx_frames, id, tx_buffer, tx_len);
   for (i=0; i<n_tx_frames; i++)
   {
-    nbytes = write(can_socket, &tx_frames[i], sizeof(struct can_frame));
-    if (nbytes != sizeof(struct can_frame))
+    tx_retry = 0;
+    while (tx_retry < 5)
     {
-      printf("Error in TX\n");
+      nbytes = write(can_socket, &tx_frames[i], sizeof(struct can_frame));
+      if (nbytes == sizeof(struct can_frame))
+      {
+        break;
+      }
+      else if (tx_retry == 5)
+      {
+        printf("Error in TX\n");
+      }
+      else
+      { 
+        usleep(10);
+        printf("Retrying packet send\n");
+      }
     }
   }
   
@@ -610,12 +651,15 @@ int bldc_comm_buffer(int can_socket, int id, const uint8_t tx_buffer[], const ui
       }
     }
     // Check timeout:
-    clock_gettime(CLOCK_MONOTONIC, &now_time);
-    if ((now_time.tv_sec > max_time.tv_sec) && (now_time.tv_nsec > max_time.tv_nsec))
+    if (timeout != NULL)
     {
-      printf("Timeout exceeded");
-      read_can_port = 0;
-      rval = -1;
+      clock_gettime(CLOCK_MONOTONIC, &now_time);
+      if ((now_time.tv_sec > max_time.tv_sec) && (now_time.tv_nsec > max_time.tv_nsec))
+      {
+        printf("Timeout exceeded");
+        read_can_port = 0;
+        rval = -1;
+      }
     }
   }
   return rval;
