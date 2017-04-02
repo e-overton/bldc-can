@@ -148,7 +148,7 @@ int bldc_get_status(const struct can_frame *frame, bldc_status *status)
     
     case BLDC_PACKET_STATUS2:
       status->current_input = (float)bldc_buffer_get_int16(frame->data, &ind) /100.0;
-      status->voltage_input = (float)bldc_buffer_get_int16(frame->data, &ind) /1000.0;
+      status->voltage_input = (float)bldc_buffer_get_uint16(frame->data, &ind) /1000.0;
       status->uptime = bldc_buffer_get_uint32(frame->data, &ind);
       return 2;
 
