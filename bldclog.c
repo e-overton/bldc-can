@@ -114,8 +114,10 @@ int main(int argc, char** argv){
   fcntl(can_socket, F_SETFL, O_NONBLOCK);
   bind(can_socket, (struct sockaddr *)&can_addr, sizeof(can_addr));
 
+  int packets = 0;
   while (read_can_port)
   {
+    if (packets > 5000) break;
     FD_ZERO(&readSet);
     FD_SET(can_socket, &readSet);
     if (select((can_socket + 1), &readSet, NULL, NULL, &can_timeout) >= 0)
@@ -126,63 +128,63 @@ int main(int argc, char** argv){
 	    {
 	      nbytes = read(can_socket, &recv_frame, sizeof(struct can_frame));
 	      if(nbytes)
-  	    { 
-          // Attempt to read data from the can frame, rely on function to tell 
-          // us if it was a valid frame.
-          int rval = bldc_get_status(&recv_frame, &mot_status);
-          
-          // Echo infomation to the terminal, if in verbose mode.
-          if (verbose > 0)
-          {
-            if (rval == 1)
-            {
-              printf ("got bldc frame1: %4f eprm, %.2f%% \n", mot_status.erpm,
-                      mot_status.duty_now);
-            }
-            else if (rval == 2)
-            {
-              printf ("got bldc frame2: %2.1fV, %2.1fA \n", mot_status.voltage_input,
-                      mot_status.current_input );
-            }
-            else if (rval == 3)
-            {
-              printf ("got bldc frame3: %2.1fC, %2.1fC \n", mot_status.temperature_motor,
-                      mot_status.temperature_mos1 );
-            }
-          }
+			{ 
+			  // Attempt to read data from the can frame, rely on function to tell 
+			  // us if it was a valid frame.
+			  int rval = bldc_get_status(&recv_frame, &mot_status);
+			  packets++;
+			  // Echo infomation to the terminal, if in verbose mode.
+			  if (verbose > 0)
+			  {
+				if (rval == 1)
+				{
+				  printf ("got bldc frame1: %4f eprm, %.2f%% \n", mot_status.erpm,
+						  mot_status.duty_now);
+				}
+				else if (rval == 2)
+				{
+				  printf ("got bldc frame2: %2.1fV, %2.1fA \n", mot_status.voltage_input,
+						  mot_status.current_input );
+				}
+				else if (rval == 3)
+				{
+				  printf ("got bldc frame3: %2.1fC, %2.1fC \n", mot_status.temperature_motor,
+						  mot_status.temperature_mos1 );
+				}
+			  }
 
-          // Write the new data (if new data was retrived)
-	        if (rval > 0)
-          {
-            //Update time keeping:
-            clock_gettime(CLOCK_MONOTONIC, &tnow);
-            time_diff = ((double)tnow.tv_sec + 1.0e-9*tnow.tv_nsec) - 
-               		      ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
+			  // Write the new data (if new data was retrived)
+				if (rval > 0)
+			  {
+				//Update time keeping:
+				clock_gettime(CLOCK_MONOTONIC, &tnow);
+				time_diff = ((double)tnow.tv_sec + 1.0e-9*tnow.tv_nsec) - 
+							  ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec);
 
-            fprintf(logfile, "%7.3f %2i %.2f %4f %2.1f %2.1f %2.1f %2.1f %2.1f\n",
-	            time_diff,
-	            mot_status.id, mot_status.duty_now, mot_status.erpm,
-	            mot_status.current_motor, mot_status.voltage_input,
-	            mot_status.current_input, mot_status.temperature_motor,
-	            mot_status.temperature_mos1);
+				fprintf(logfile, "%7.3f %2i %.2f %4f %2.1f %2.1f %2.1f %2.1f %2.1f\n",
+					time_diff,
+					mot_status.id, mot_status.duty_now, mot_status.erpm,
+					mot_status.current_motor, mot_status.voltage_input,
+					mot_status.current_input, mot_status.temperature_motor,
+					mot_status.temperature_mos1);
 
-            if (verbose > 0)
-            printf("%7.3f %2i %.2f %4f %2.1f %2.1f %2.1f %2.1f %2.1f\n",
-	           time_diff,
-	           mot_status.id, mot_status.duty_now, mot_status.erpm,
-	           mot_status.current_motor, mot_status.voltage_input,
-	           mot_status.current_input, mot_status.temperature_motor,
-	           mot_status.temperature_mos1);
-            fflush(logfile);
-	        }
-	    
-	    
-	  }
-	}
-      else
-	{
-	  //printf("nodata\n");
-	}
+				if (verbose > 0)
+				printf("%7.3f %2i %.2f %4f %2.1f %2.1f %2.1f %2.1f %2.1f\n",
+				   time_diff,
+				   mot_status.id, mot_status.duty_now, mot_status.erpm,
+				   mot_status.current_motor, mot_status.voltage_input,
+				   mot_status.current_input, mot_status.temperature_motor,
+				   mot_status.temperature_mos1);
+				fflush(logfile);
+				}
+			
+			
+		    }
+		}
+		  else
+		{
+		  usleep(100);
+		}
     }
   }
 

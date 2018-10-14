@@ -47,7 +47,7 @@ int main(int varc, char* varv[])
   //bldc_set_erpm(&test_frame, 45, 9000);
   float servo_ms, servo_ms_last;
 
-  bldc_get_decoded_ppm(can_socket, 2, &servo_ms, &servo_ms_last, NULL);
+  bldc_get_decoded_ppm(can_socket, 6, &servo_ms, &servo_ms_last, NULL);
   printf("BLDC ppm: %f, %f\n", servo_ms, servo_ms_last); 
 
   return 0;
